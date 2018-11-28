@@ -1,29 +1,32 @@
 {
   "nodes": [
-    {"id": "a", "name": "a", "group": 1},
-    {"id": "b", "name": "b", "group": 1},
-    {"id": "c", "name": "c", "group": 1},
-    {"id": "d", "name": "d", "group": 2},
-    {"id": "e", "name": "e", "group": 2},
-    {"id": "f", "name": "f", "group": 2}, 
-    {"id": "g", "name": "g", "group": 1},
-    {"id": "h", "name": "h", "group": 3},
-    {"id": "i", "name": "i", "group": 3},
-    {"id": "j", "name": "j", "group": 3}
-    
+    {"id": "1", "name": "a", "parent_id": "0", "level": 1, "leaf": "false"},
+    {"id": "2", "name": "b", "parent_id": "0", "level": 1, "leaf": "false"},
+    {"id": "3", "name": "c", "parent_id": "0", "level": 1, "leaf": "false"},
+    {"id": "4", "name": "d", "parent_id": "1", "level": 2, "leaf": "false"},
+    {"id": "5", "name": "e", "parent_id": "1", "level": 2, "leaf": "true"},
+    {"id": "6", "name": "f", "parent_id": "2", "level": 2, "leaf": "false"}, 
+    {"id": "7", "name": "g", "parent_id": "1", "level": 2, "leaf": "true"},
+    {"id": "8", "name": "h", "parent_id": "3", "level": 2, "leaf": "true"},
+    {"id": "9", "name": "i", "parent_id": "3", "level": 2, "leaf": "yes"},
+    {"id": "10", "name": "j", "parent_id": "3", "level": 2, "leaf": "yes"},
+    {"id": "11", "name": "k", "parent_id": "4", "level": 3, "leaf": "yes"},
+    {"id": "12", "name": "l", "parent_id": "6", "level": 3, "leaf": "yes"}
+
  ],
   "links": [
-    {"source": "a", "target": "b"},
-    {"source": "b", "target": "c"},
-    {"source": "c", "target": "d"},
-    {"source": "d", "target": "e"},
-    {"source": "d", "target": "f"},
-    {"source": "e", "target": "f"},
-    {"source": "f", "target": "g"},
-    {"source": "g", "target": "h"},
-    {"source": "h", "target": "i"},
-    {"source": "i", "target": "j"},
-    {"source": "j", "target": "b"}
- ]
+    {"source": "10", "target": "4"},
+    {"source": "4", "target": "1"},
+    {"source": "5", "target": "1"},
+    {"source": "6", "target": "2"},
+    {"source": "7", "target": "1"},
+    {"source": "8", "target": "3"},
+    {"source": "9", "target": "3"},
+    {"source": "10", "target": "3"},
+    {"source": "6", "target": "7"},
+    {"source": "4", "target": "11"},
+    {"source": "6", "target": "12"}
+
+  ]
 }
 

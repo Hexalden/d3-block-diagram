@@ -20,15 +20,17 @@ path {
 }
 
 </style>
-<svg width='960' height='600'></svg>
+<svg width='2000' height='800'></svg>
+
 <script src='https://d3js.org/d3.v4.min.js'></script>
+
 <script>
 
 
 var svg = d3.select('svg'),
     width = +svg.attr('width'),
     height = +svg.attr('height'),
-    color = d3.scaleOrdinal(d3.schemeCategory20),
+    color = d3.scaleOrdinal(d3.schemeCategory10),//to change to schemeCategory20 for more colors
     valueline = d3.line()
         .x(function(d) { return d[0]; })
         .y(function(d) { return d[1]; })
@@ -42,6 +44,7 @@ var svg = d3.select('svg'),
     node,
     link,
     curveTypes = ['curveStep'],
+    forceStrength = 0.3;
     simulation = d3.forceSimulation()
         .force('link', d3.forceLink()
             .id(function(d) { return d.id; })
@@ -52,19 +55,23 @@ var svg = d3.select('svg'),
         .force('y', d3.forceY().y(height / 2))
         .force('collision', d3.forceCollide().radius(function(d) { return Math.max(d.width, d.height);}));
 
-
-var centerScale = d3.scalePoint().padding(1).range([0, width]);
-var forceStrength = 0.05;
-
-
-
 d3.json('data.json', function(error, graph) {
     if (error) throw error;
 
     graph.nodes.forEach(function(d){
         d.width = 80;
         d.height = 40;
-        d.group = d.group.toString();
+        currentNode = d;
+        d.group = [d["id"]];
+        while(currentNode["parent_id"] != "0"){
+            currentNode = graph.nodes.filter(
+                node => node["id"] == currentNode["parent_id"] 
+            )[0];
+            d.group.push(currentNode["id"]);
+        };
+        d.group = d.group.reverse();
+        d.level = d.level;
+        d.isLeaf = d.leaf;
     });
 
     groups = svg.append('g').attr('class', 'groups');
@@ -88,16 +95,20 @@ d3.json('data.json', function(error, graph) {
         .attr('width', function(d) { return d.width; })
         .attr("height", function(d) { return d.height; })
         .attr('stroke', 'black')
-        .attr('fill', function(d) { return color(d.group); });
+        .attr('fill', function(d) { return d3.color(color(d.group[0])).rgb().brighter(((d.level-1)/2)) });
 
 
 
-    groupIds = d3.set(graph.nodes.map(function(n) { return +n.group; }))
+    groupIds = d3.set(graph.nodes.map(function(n) { return +n.group[n.group.length - 1]; }))
         .values()
         .map( function(groupId) {
-            return { 
+            return {
                 groupId : groupId,
-                count : graph.nodes.filter(function(n) { return +n.group == groupId; }).length
+                parent_groupId : graph.nodes.filter(function(n) {
+                                                        parentNode = graph.nodes.filter(
+                                                            d => d["id"] == groupId 
+                                                            )[0];}).id,
+                count : graph.nodes.filter(function(n) { return n.group.includes(groupId); }).length
             };
         })
         .filter( function(group) { return group.count > 1;})
@@ -109,7 +120,9 @@ d3.json('data.json', function(error, graph) {
         .append('g')
         .attr('class', 'path_placeholder')
         .append('path')
-        .attr('stroke', function(d) { return color(d); })
+        .attr('stroke', function(d) { 
+            
+            return color(d); })
         .attr('fill', function(d) { return color(d); })
         .attr('opacity', 0);
 
@@ -118,7 +131,7 @@ d3.json('data.json', function(error, graph) {
         .duration(2000)
         .attr('opacity', 1);
 
-    var text = svg.append("g")
+    text = svg.append("g")
         .attr("class", "labels")
         .selectAll("text")
         .data(graph.nodes)
@@ -136,6 +149,8 @@ d3.json('data.json', function(error, graph) {
         .force('link')
         .links(graph.links);
 
+
+    var tick_count = 0
     function ticked() {
         link
             .attr('x1', function(d) { return (d.source.x + (d.source.width / 2)); })
@@ -151,55 +166,88 @@ d3.json('data.json', function(error, graph) {
             .attr("dy", function (d) { return (d.y + 15); });
 
         updateGroups();
+	    if(tick_count < 10){
+            splitNodes();
+            tick_count++;
+        };
     }
 
-    function splitNodes(byVar) {
-        centerScale.domain(graph.nodes.map(function(d){return d[byVar]; }));
+
+
+    var Xscale = d3.scalePoint().padding(1).range([0, width]);
+    var Yscale = d3.scalePoint().padding(1).range([0, height]);
+
+    function splitNodes() {
+        Xscale.domain(graph.nodes.filter(
+                    d => d["parent_id"] == "0"
+                    ).map(function(d){return d["id"]; }));
+        Yscale.domain(graph.nodes.map(function(d){return d["level"]; }));
 
         simulation.force('x', d3.forceX()
                                 .strength(forceStrength)
                                 .x(function(d){
-                                    return centerScale(d[byVar]);
-                                }));
+                                    parentId = d["parent_id"];
+                                    if(parentId == "0"){
+                                        return Xscale(d["id"]);
+                                    }
+                                    else {
+                                        parentNode = graph.nodes.filter(
+                                                d => d["id"] == parentId 
+                                        )[0];
+                                        return parentNode.x;
+                                    }
+                                })
+        );                      
+        simulation.force('y', d3.forceY()
+                                .strength(forceStrength*2)
+                                .y(function(d){
+                                    return Yscale(d["level"]);
+                                })
+        );
         simulation.alpha(2).restart();
     };
-    splitNodes('group');
+    splitNodes();
 
 
+
+    var polygonGenerator = function(groupId) {
+        var node_coords = node
+            .filter(function(d) { return d.group.includes(groupId); })
+            .data()
+            .map(function(d) { return [[d.x, d.y],
+                                       [d.x + d.width, d.y],
+                                       [d.x, d.y + d.height],
+                                       [d.x + d.width, d.y + d.height]];});
+
+        test = [];
+        for (i = 0; i < node_coords.length; i++) {
+            for (j = 0; j < node_coords[i].length; j++) {
+                test.push(node_coords[i][j]);
+            }
+        };
+        return d3.polygonHull(test);
+    };
+
+
+    function updateGroups() {
+        groupIds.forEach(function(groupId) {
+            var path = paths.filter(function(d) { return d == groupId;})
+                .attr('transform', 'scale(1) translate(0,0)')
+                .attr('d', function(d) {
+                    polygon = polygonGenerator(d);
+                    centroid = d3.polygonCentroid(polygon);
+                    return valueline(
+                    polygon.map(function(point) {
+                        return [  point[0] - centroid[0], point[1] - centroid[1] ];
+                        })
+                    );
+                });
+
+            d3.select(path.node().parentNode).attr('transform', 'translate('  + centroid[0] + ',' + (centroid[1]) + ') scale(' + scaleFactor + ')');
+        });
+    };
 
 });
-
-
-
-var polygonGenerator = function(groupId) {
-    var node_coords = node
-        .filter(function(d) { return d.group == groupId; })
-        .data()
-        .map(function(d) { return [(d.x + (d.width / 2)), (d.y + (d.height / 2))]; });
-    return d3.polygonHull(node_coords);
-};
-
-
-
-function updateGroups() {
-    groupIds.forEach(function(groupId) {
-        var path = paths.filter(function(d) { return d == groupId;})
-            .attr('transform', 'scale(1) translate(0,0)')
-            .attr('d', function(d) {
-                polygon = polygonGenerator(d);          
-                centroid = d3.polygonCentroid(polygon);
-
-                return valueline(
-                polygon.map(function(point) {
-                    return [  point[0] - centroid[0], point[1] - centroid[1] ];
-                    })
-                );
-            });
-
-        d3.select(path.node().parentNode).attr('transform', 'translate('  + centroid[0] + ',' + (centroid[1]) + ') scale(' + scaleFactor + ')');
-    });
-}
-
 
 </script>
 
