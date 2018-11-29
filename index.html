@@ -38,18 +38,18 @@ var svg = d3.select('svg'),
     paths,
     groups,
     groupIds,
-    scaleFactor = 1.2,
+    scaleFactor = 1,
     polygon,
     centroid,
     node,
     link,
     curveTypes = ['curveStep'],
-    forceStrength = 0.3;
+    forceStrength = 0.6;
     simulation = d3.forceSimulation()
         .force('link', d3.forceLink()
             .id(function(d) { return d.id; })
             .distance(100)
-            .strength(0.1))
+            .strength(forceStrength))
         .force('charge', d3.forceManyBody())
         .force('x', d3.forceX().x(width / 2))
         .force('y', d3.forceY().y(height / 2))
@@ -59,19 +59,26 @@ d3.json('data.json', function(error, graph) {
     if (error) throw error;
 
     graph.nodes.forEach(function(d){
-        d.width = 80;
-        d.height = 40;
+        d.width = 40;
+        d.height = 20;
         currentNode = d;
         d.group = [d["id"]];
+        d.level = 1;
         while(currentNode["parent_id"] != "0"){
             currentNode = graph.nodes.filter(
                 node => node["id"] == currentNode["parent_id"] 
             )[0];
             d.group.push(currentNode["id"]);
+            d.level++;
         };
+        d.children = [];
+        for(var i = 0; i < graph.nodes.length; i++){
+            if(graph.nodes[i]["parent_id"] == d.id){
+                d.children.push(graph.nodes[i]);
+            }
+        }
         d.group = d.group.reverse();
-        d.level = d.level;
-        d.isLeaf = d.leaf;
+        d.color = d3.color(color(d.group[0])).rgb().brighter(((d.level-1)/2)); 
     });
 
     groups = svg.append('g').attr('class', 'groups');
@@ -95,35 +102,29 @@ d3.json('data.json', function(error, graph) {
         .attr('width', function(d) { return d.width; })
         .attr("height", function(d) { return d.height; })
         .attr('stroke', 'black')
-        .attr('fill', function(d) { return d3.color(color(d.group[0])).rgb().brighter(((d.level-1)/2)) });
+        .attr('fill', function(d) {return d.color});
 
 
 
-    groupIds = d3.set(graph.nodes.map(function(n) { return +n.group[n.group.length - 1]; }))
+    groupProperties = d3.set(graph.nodes.map(function(n) { return +n.group[n.group.length - 1]; }))
         .values()
         .map( function(groupId) {
             return {
-                groupId : groupId,
-                parent_groupId : graph.nodes.filter(function(n) {
-                                                        parentNode = graph.nodes.filter(
-                                                            d => d["id"] == groupId 
-                                                            )[0];}).id,
+                id : groupId,
+                node : graph.nodes.filter(n => n["id"] == groupId)[0],
                 count : graph.nodes.filter(function(n) { return n.group.includes(groupId); }).length
             };
         })
-        .filter( function(group) { return group.count > 1;})
-        .map( function(group) { return group.groupId; });
+        .filter( function(group) { return group.count > 1;});
 
     paths = groups.selectAll('.path_placeholder')
-        .data(groupIds, function(d) { return +d; })
+        .data(groupProperties, function(d) { return d; })
         .enter()
         .append('g')
         .attr('class', 'path_placeholder')
         .append('path')
-        .attr('stroke', function(d) { 
-            
-            return color(d); })
-        .attr('fill', function(d) { return color(d); })
+        .attr('stroke', function(d) {return d.node.color; })
+        .attr('fill', function(d) {return d.node.color;})
         .attr('opacity', 0);
 
     paths
@@ -139,7 +140,7 @@ d3.json('data.json', function(error, graph) {
         .append("text")
         .attr("dx", 1)
         .attr("dy", 1)
-        .text(function(d) { return d.name });
+        .text(function(d) { return d.id+"-"+d.level });
 
 
 
@@ -166,13 +167,22 @@ d3.json('data.json', function(error, graph) {
             .attr("dy", function (d) { return (d.y + 15); });
 
         updateGroups();
-	    if(tick_count < 10){
+	    if(tick_count < 30){
             splitNodes();
             tick_count++;
         };
     }
 
 
+    var NodeLevel = graph
+                            .nodes
+                            .map(function(d){
+                                return d.level;
+                            });
+    var numberNodeEachLevel = { };
+    for (var i = 0, j = NodeLevel.length; i < j; i++) {
+        numberNodeEachLevel[NodeLevel[i]] = (numberNodeEachLevel[NodeLevel[i]] || 0) + 1;
+    };
 
     var Xscale = d3.scalePoint().padding(1).range([0, width]);
     var Yscale = d3.scalePoint().padding(1).range([0, height]);
@@ -184,7 +194,9 @@ d3.json('data.json', function(error, graph) {
         Yscale.domain(graph.nodes.map(function(d){return d["level"]; }));
 
         simulation.force('x', d3.forceX()
-                                .strength(forceStrength)
+                                .strength(function(d){
+                                    return forceStrength*(1/d.level);
+                                })
                                 .x(function(d){
                                     parentId = d["parent_id"];
                                     if(parentId == "0"){
@@ -194,7 +206,11 @@ d3.json('data.json', function(error, graph) {
                                         parentNode = graph.nodes.filter(
                                                 d => d["id"] == parentId 
                                         )[0];
-                                        return parentNode.x;
+                                        parentX = parentNode.x;
+                                        index = parentNode.children.map(n => n.id).indexOf(d.id);
+                                        index = index - ((parentNode.children.length-1) / 2);
+                                        place = (1 / (1 + Math.exp(-index))) - 0.5;
+                                        return parentNode.x + 400*place;
                                     }
                                 })
         );                      
@@ -219,22 +235,22 @@ d3.json('data.json', function(error, graph) {
                                        [d.x, d.y + d.height],
                                        [d.x + d.width, d.y + d.height]];});
 
-        test = [];
+        nodeCoordsExplode = [];
         for (i = 0; i < node_coords.length; i++) {
             for (j = 0; j < node_coords[i].length; j++) {
-                test.push(node_coords[i][j]);
+                nodeCoordsExplode.push(node_coords[i][j]);
             }
         };
-        return d3.polygonHull(test);
+        return d3.polygonHull(nodeCoordsExplode);
     };
 
 
     function updateGroups() {
-        groupIds.forEach(function(groupId) {
-            var path = paths.filter(function(d) { return d == groupId;})
+        groupProperties.forEach(function(groupP) {
+            var path = paths.filter(function(d) { return d.id == groupP.id;})
                 .attr('transform', 'scale(1) translate(0,0)')
                 .attr('d', function(d) {
-                    polygon = polygonGenerator(d);
+                    polygon = polygonGenerator(d.id);
                     centroid = d3.polygonCentroid(polygon);
                     return valueline(
                     polygon.map(function(point) {
